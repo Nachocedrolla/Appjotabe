@@ -1,0 +1,5 @@
+{
+  "name": "Pre-Trip Checklist",
+  "description": "A comprehensive pre-trip checklist application for drivers and vehicles, ensuring all necessary checks are completed before starting a journey. It covers vehicle data, driver information, and documentation verification.",
+  "requestFramePermissions": []
+}
