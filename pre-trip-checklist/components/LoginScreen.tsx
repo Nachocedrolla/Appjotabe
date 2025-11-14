@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
 
 interface LoginScreenProps {
-  onLogin: (pin: string) => boolean;
+  onLogin: (pin: string) => string | null;
   isLoading: boolean;
   error: string | null;
 }
@@ -15,8 +14,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, isLoading, error }) 
     e.preventDefault();
     if (isLoading || error) return;
 
-    const success = onLogin(pin);
-    if (!success) {
+    const role = onLogin(pin);
+    if (!role) {
       setLoginError('Código de acceso incorrecto. Intente de nuevo.');
       setPin('');
     }
