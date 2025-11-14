@@ -313,7 +313,7 @@ const App: React.FC = () => {
         
         <footer className="mt-10 text-center p-4 bg-[#1e3a8a] text-white rounded-lg shadow-md">
           <p className="font-semibold">Desarrollado por Giovanni Servicios IA</p>
-          <p className="text-sm text-blue-200 mt-1">C.E.O.: Juan Ignacio Cedrolla</p>
+          <p className="text-sm text-blue-200 mt-1">CEO.: Juan Ignacio Cedrolla</p>
         </footer>
       </div>
     </div>
