@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Card from './components/Card';
 import TextInput from './components/TextInput';
@@ -6,7 +5,7 @@ import DateTimeInput from './components/DateTimeInput';
 import ChecklistSection from './components/ChecklistSection';
 import EditableSelectInput from './components/EditableSelectInput';
 import TextAreaInput from './components/TextAreaInput';
-import LoginScreen from './components/LoginScreen'; // Import the new LoginScreen component
+import LoginScreen from './components/LoginScreen';
 
 // URLs for Google Sheets provided by the user
 const UNIDADES_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTROf3uSKgOTiGU66iyY0_EhZFziw_QqrXTURSdTqsAV2dW1nHe70xSEPmHRYt3Vz0wlgFmZ7ldwNWj/pub?gid=1803304221&single=true&output=csv';
@@ -22,10 +21,7 @@ type ChecklistConfig = {
 
 const App: React.FC = () => {
   // --- STATE MANAGEMENT ---
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    // Check session storage to keep user logged in during the session
-    return sessionStorage.getItem('isAuthenticated') === 'true';
-  });
+  const [userRole, setUserRole] = useState<string | null>(() => sessionStorage.getItem('userRole'));
   const [authorizedPins, setAuthorizedPins] = useState<string[]>([]);
 
   const [units, setUnits] = useState<{value: string, label: string}[]>([]);
@@ -40,7 +36,6 @@ const App: React.FC = () => {
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
   
-  // FIX: Initialize formData with all its properties to prevent type errors on access.
   const [formData, setFormData] = useState({
     unit: '',
     mileage: '',
@@ -109,29 +104,39 @@ const App: React.FC = () => {
     // Call fetch functions
     fetchUnits();
     fetchDriversAndPins();
-    // fetchChecklistConfig(); // This can be loaded after authentication
   }, []);
   
   // Load config only when authenticated
   useEffect(() => {
-      if (isAuthenticated) {
+      if (userRole) {
           fetchChecklistConfig();
       }
-  }, [isAuthenticated]);
+  }, [userRole]);
 
 
   // --- AUTHENTICATION ---
-  const handleLogin = (pin: string) => {
-    if (authorizedPins.includes(pin)) {
-      sessionStorage.setItem('isAuthenticated', 'true');
-      setIsAuthenticated(true);
-      return true;
+  const handleLogin = (pin: string): string | null => {
+    let role: string | null = null;
+    
+    // Check for special hardcoded roles
+    if (pin === '7777') {
+      role = 'admin';
+    } else if (pin === '1234') {
+      role = 'guest';
+    } else if (authorizedPins.includes(pin)) {
+      // Regular users from the sheet have full access
+      role = 'user';
     }
-    return false;
+
+    if (role) {
+      sessionStorage.setItem('userRole', role);
+      setUserRole(role);
+    }
+    
+    return role;
   };
 
   // --- FORM HANDLING ---
-  // FIX: Implement form handlers to update state.
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({...prev, [name]: value}));
@@ -142,6 +147,10 @@ const App: React.FC = () => {
   };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (userRole === 'guest') {
+      alert('El usuario invitado no puede enviar formularios.');
+      return;
+    }
     setIsSubmitting(true);
     console.log('Submitting Data:', { formData, checklistData });
     // Simulate API call
@@ -188,7 +197,7 @@ const App: React.FC = () => {
 
 
   // --- RENDERING LOGIC ---
-  if (!isAuthenticated) {
+  if (!userRole) {
     return <LoginScreen onLogin={handleLogin} isLoading={driversLoading} error={driversError} />;
   }
   
@@ -303,7 +312,8 @@ const App: React.FC = () => {
           <div className="mt-8 flex justify-center">
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || userRole === 'guest'}
+              title={userRole === 'guest' ? 'El usuario invitado no puede enviar formularios' : ''}
               className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Enviando...' : 'Enviar Checklist'}
@@ -313,7 +323,7 @@ const App: React.FC = () => {
         
         <footer className="mt-10 text-center p-4 bg-[#1e3a8a] text-white rounded-lg shadow-md">
           <p className="font-semibold">Desarrollado por Giovanni Servicios IA</p>
-          <p className="text-sm text-blue-200 mt-1">CEO.: Juan Ignacio Cedrolla</p>
+          <p className="text-sm text-blue-200 mt-1">C.E.O.: Juan Ignacio Cedrolla</p>
         </footer>
       </div>
     </div>
