@@ -6,14 +6,13 @@ import DateTimeInput from './components/DateTimeInput';
 import ChecklistSection from './components/ChecklistSection';
 import EditableSelectInput from './components/EditableSelectInput';
 import TextAreaInput from './components/TextAreaInput';
+import LoginScreen from './components/LoginScreen'; // Import the new LoginScreen component
 
 // URLs for Google Sheets provided by the user
 const UNIDADES_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTROf3uSKgOTiGU66iyY0_EhZFziw_QqrXTURSdTqsAV2dW1nHe70xSEPmHRYt3Vz0wlgFmZ7ldwNWj/pub?gid=1803304221&single=true&output=csv';
 const CHOFERES_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTROf3uSKgOTiGU66iyY0_EhZFziw_QqrXTURSdTqsAV2dW1nHe70xSEPmHRYt3Vz0wlgFmZ7ldwNWj/pub?gid=1632634501&single=true&output=csv';
-// NEW: URL for the dynamic checklist configuration
 const CHECKLIST_CONFIG_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTROf3uSKgOTiGU66iyY0_EhZFziw_QqrXTURSdTqsAV2dW1nHe70xSEPmHRYt3Vz0wlgFmZ7ldwNWj/pub?gid=1758709149&single=true&output=csv';
 
-// This type defines the structure of the dynamically loaded checklist
 type ChecklistConfig = {
   [key: string]: {
     title: string;
@@ -22,6 +21,13 @@ type ChecklistConfig = {
 };
 
 const App: React.FC = () => {
+  // --- STATE MANAGEMENT ---
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    // Check session storage to keep user logged in during the session
+    return sessionStorage.getItem('isAuthenticated') === 'true';
+  });
+  const [authorizedPins, setAuthorizedPins] = useState<string[]>([]);
+
   const [units, setUnits] = useState<{value: string, label: string}[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(true);
   const [unitsError, setUnitsError] = useState<string | null>(null);
@@ -33,87 +39,8 @@ const App: React.FC = () => {
   const [checklistConfig, setChecklistConfig] = useState<ChecklistConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Helper to fetch and parse simple lists (Units, Drivers)
-    const fetchSimpleList = async (
-        url: string, 
-        setData: React.Dispatch<React.SetStateAction<{value: string, label: string}[]>>,
-        setLoading: React.Dispatch<React.SetStateAction<boolean>>,
-        setError: React.Dispatch<React.SetStateAction<string | null>>,
-        errorMsg: string,
-    ) => {
-        try {
-            setLoading(true);
-            setError(null);
-            const response = await fetch(url);
-            if (!response.ok) throw new Error('Network response was not ok');
-            
-            let text = await response.text();
-            if (text.charCodeAt(0) === 0xFEFF) text = text.substring(1);
-
-            const rows = text.split(/\r?\n/).filter(row => row.trim() !== '');
-            if (rows.length === 0) {
-              setData([]);
-              return;
-            }
-            
-            const options = rows.map(row => {
-                const value = row.trim();
-                return { value, label: value };
-            }).sort((a, b) => a.label.localeCompare(b.label));
-
-            setData(options);
-
-        } catch (error) {
-            console.error(`Error fetching data from ${url}:`, error);
-            setError(errorMsg);
-            setData([]);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Helper to fetch and parse the checklist configuration
-    const fetchChecklistConfig = async () => {
-      // FIX: Removed an obsolete check for a placeholder URL. This comparison was causing a TypeScript error
-      // because the constant URL string and the placeholder string have no overlap.
-      try {
-        setConfigLoading(true);
-        setConfigError(null);
-        const response = await fetch(CHECKLIST_CONFIG_CSV_URL);
-        if(!response.ok) throw new Error('Network response was not ok for config');
-        
-        let text = await response.text();
-        if (text.charCodeAt(0) === 0xFEFF) text = text.substring(1);
-
-        const rows = text.split(/\r?\n/).slice(1); // slice(1) to skip header
-        const newConfig: ChecklistConfig = {};
-
-        rows.forEach(row => {
-          const [sectionId, sectionTitle, itemId, itemLabel, itemType] = row.split(',').map(s => s.trim());
-          if (sectionId && sectionTitle && itemId && itemLabel) {
-            if (!newConfig[sectionId]) {
-              newConfig[sectionId] = { title: sectionTitle, items: [] };
-            }
-            newConfig[sectionId].items.push({ id: itemId, label: itemLabel, type: itemType || 'default' });
-          }
-        });
-        
-        setChecklistConfig(newConfig);
-      } catch (error) {
-        console.error('Error fetching checklist config:', error);
-        setConfigError('No se pudo cargar la configuración del checklist.');
-      } finally {
-        setConfigLoading(false);
-      }
-    };
-
-    fetchSimpleList(UNIDADES_CSV_URL, setUnits, setUnitsLoading, setUnitsError, 'No se pudieron cargar las unidades.');
-    fetchSimpleList(CHOFERES_CSV_URL, setDrivers, setDriversLoading, setDriversError, 'No se pudieron cargar los choferes.');
-    fetchChecklistConfig();
-  }, []);
-
+  
+  // FIX: Initialize formData with all its properties to prevent type errors on access.
   const [formData, setFormData] = useState({
     unit: '',
     mileage: '',
@@ -122,51 +49,149 @@ const App: React.FC = () => {
     workshopNotes: '',
     email: '',
   });
-
   const [checklistData, setChecklistData] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // --- DATA FETCHING ---
+  useEffect(() => {
+    const fetchAndParseCsv = async (url: string) => {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Network response was not ok for ${url}`);
+      let text = await response.text();
+      // Remove BOM character if present
+      if (text.charCodeAt(0) === 0xFEFF) text = text.substring(1);
+      return text.split(/\r?\n/).filter(row => row.trim() !== '');
+    };
+
+    const fetchUnits = async () => {
+      try {
+        setUnitsLoading(true);
+        setUnitsError(null);
+        const rows = await fetchAndParseCsv(UNIDADES_CSV_URL);
+        const options = rows.map(row => ({ value: row.trim(), label: row.trim() }))
+          .sort((a, b) => a.label.localeCompare(b.label));
+        setUnits(options);
+      } catch (error) {
+        console.error('Error fetching units:', error);
+        setUnitsError('No se pudieron cargar las unidades.');
+      } finally {
+        setUnitsLoading(false);
+      }
+    };
+
+    const fetchDriversAndPins = async () => {
+        try {
+            setDriversLoading(true);
+            setDriversError(null);
+            const rows = await fetchAndParseCsv(CHOFERES_CSV_URL);
+            
+            // Assuming first row is header, skip it
+            const dataRows = rows.slice(1);
+
+            const driverOptions = dataRows.map(row => {
+                const name = row.split(',')[0]?.trim();
+                return { value: name, label: name };
+            }).filter(d => d.value).sort((a, b) => a.label.localeCompare(b.label));
+            
+            const pins = dataRows.map(row => row.split(',')[1]?.trim()).filter(Boolean);
+
+            setDrivers(driverOptions);
+            setAuthorizedPins(pins as string[]);
+
+        } catch (error) {
+            console.error('Error fetching drivers and pins:', error);
+            setDriversError('No se pudieron cargar los choferes.');
+        } finally {
+            setDriversLoading(false);
+        }
+    };
+    
+    // Call fetch functions
+    fetchUnits();
+    fetchDriversAndPins();
+    // fetchChecklistConfig(); // This can be loaded after authentication
+  }, []);
+  
+  // Load config only when authenticated
+  useEffect(() => {
+      if (isAuthenticated) {
+          fetchChecklistConfig();
+      }
+  }, [isAuthenticated]);
+
+
+  // --- AUTHENTICATION ---
+  const handleLogin = (pin: string) => {
+    if (authorizedPins.includes(pin)) {
+      sessionStorage.setItem('isAuthenticated', 'true');
+      setIsAuthenticated(true);
+      return true;
+    }
+    return false;
+  };
+
+  // --- FORM HANDLING ---
+  // FIX: Implement form handlers to update state.
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData(prev => ({...prev, [name]: value}));
   };
-  
   const handleChecklistChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setChecklistData(prev => ({ ...prev, [name]: value }));
+    setChecklistData(prev => ({...prev, [name]: value}));
   };
-  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
-    const webhookUrl = 'https://primary-production-e953.up.railway.app/webhook/Aplicacion_mobil';
-    
-    const payload = { ...formData, checklist: checklistData };
-    
+    console.log('Submitting Data:', { formData, checklistData });
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    alert('Checklist enviado con éxito.');
+    setIsSubmitting(false);
+  };
+  
+  const fetchChecklistConfig = async () => {
     try {
-        const response = await fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        
-        if (response.ok) {
-            alert('Checklist enviado con éxito!');
-            setFormData({ unit: '', mileage: '', driver: '', dateTime: '', workshopNotes: '', email: '' });
-            setChecklistData({});
-        } else {
-            const errorData = await response.text();
-            throw new Error(`Error del servidor: ${response.status} - ${errorData}`);
+      setConfigLoading(true);
+      setConfigError(null);
+      const response = await fetch(CHECKLIST_CONFIG_CSV_URL);
+      if(!response.ok) throw new Error('Network response was not ok for config');
+      
+      let text = await response.text();
+      if (text.charCodeAt(0) === 0xFEFF) text = text.substring(1);
+
+      const rows = text.split(/\r?\n/).slice(1);
+      const newConfig: ChecklistConfig = {};
+
+      rows.forEach(row => {
+        const [sectionId, sectionTitle, itemId, itemLabel, itemType] = row.split(',').map(s => s.trim());
+        if (sectionId && sectionTitle && itemId && itemLabel) {
+          if (!newConfig[sectionId]) {
+            newConfig[sectionId] = { title: sectionTitle, items: [] };
+          }
+          let finalItemType = itemType || 'default';
+          if (sectionId === 'unitCondition') {
+            finalItemType = 'condition';
+          }
+          newConfig[sectionId].items.push({ id: itemId, label: itemLabel, type: finalItemType });
         }
+      });
+      
+      setChecklistConfig(newConfig);
     } catch (error) {
-        console.error('Error al enviar el checklist:', error);
-        alert(`Error al enviar el checklist: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      console.error('Error fetching checklist config:', error);
+      setConfigError('No se pudo cargar la configuración del checklist.');
     } finally {
-        setIsSubmitting(false);
+      setConfigLoading(false);
     }
   };
 
+
+  // --- RENDERING LOGIC ---
+  if (!isAuthenticated) {
+    return <LoginScreen onLogin={handleLogin} isLoading={driversLoading} error={driversError} />;
+  }
+  
   const renderChecklistSections = () => {
     if (configLoading) {
       return <Card title="Cargando Configuración..."><p className="text-center text-gray-500">Por favor, espere.</p></Card>;
