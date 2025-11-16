@@ -174,9 +174,14 @@ const App: React.FC = () => {
       console.log('Webhook Response OK:', response.ok);
 
       if (!response.ok) {
-        const errorText = await response.text();
+        let errorText = await response.text();
+        // If errorText is empty, provide a default from the status.
+        if (!errorText) {
+          errorText = response.statusText || `Error code: ${response.status}`;
+        }
         console.error('Webhook Response Error Text:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}, text: ${errorText}`);
+        // This error will be caught by the catch block below.
+        throw new Error(`El servidor respondió con un error ${response.status}. Mensaje: ${errorText}`);
       }
 
       alert('Checklist enviado con éxito.');
@@ -194,7 +199,18 @@ const App: React.FC = () => {
 
     } catch (error) {
       console.error('Failed to submit checklist:', error);
-      alert('Error al enviar el checklist. Por favor, revise su conexión e intente de nuevo.');
+      let detailedErrorMessage = 'Ocurrió un error inesperado.';
+      if (error instanceof Error) {
+          // Check for network errors which can indicate CORS issues
+          if (error.name === 'TypeError' && error.message.includes('fetch')) {
+              detailedErrorMessage = 'Hubo un error de red. Esto podría ser un problema de CORS (seguridad del navegador) o de conectividad. Revise la consola del navegador (F12) para más detalles.';
+          } else {
+              detailedErrorMessage = error.message;
+          }
+      } else {
+          detailedErrorMessage = String(error);
+      }
+      alert(`Error al enviar el checklist.\n\nDetalles: ${detailedErrorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
