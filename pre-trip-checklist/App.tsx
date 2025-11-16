@@ -170,8 +170,12 @@ const App: React.FC = () => {
         body: JSON.stringify(payload),
       });
 
+      console.log('Webhook Response Status:', response.status);
+      console.log('Webhook Response OK:', response.ok);
+
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('Webhook Response Error Text:', errorText);
         throw new Error(`HTTP error! status: ${response.status}, text: ${errorText}`);
       }
 
