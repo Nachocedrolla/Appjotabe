@@ -6,6 +6,7 @@ import ChecklistSection from './components/ChecklistSection';
 import EditableSelectInput from './components/EditableSelectInput';
 import TextAreaInput from './components/TextAreaInput';
 import LoginScreen from './components/LoginScreen';
+import Logo from './components/Logo';
 
 // URLs for Google Sheets provided by the user
 const UNIDADES_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTROf3uSKgOTiGU66iyY0_EhZFziw_QqrXTURSdTqsAV2dW1nHe70xSEPmHRYt3Vz0wlgFmZ7ldwNWj/pub?gid=1803304221&single=true&output=csv';
@@ -152,11 +153,47 @@ const App: React.FC = () => {
       return;
     }
     setIsSubmitting(true);
-    console.log('Submitting Data:', { formData, checklistData });
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    alert('Checklist enviado con éxito.');
-    setIsSubmitting(false);
+
+    const payload = {
+      ...formData,
+      checklist: checklistData,
+    };
+
+    console.log('Submitting Data to webhook:', payload);
+
+    try {
+      const response = await fetch('https://primary-production-e953.up.railway.app/webhook/Aplicacion_mobil', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, text: ${errorText}`);
+      }
+
+      alert('Checklist enviado con éxito.');
+      
+      // Reset form fields
+      setFormData({
+        unit: '',
+        mileage: '',
+        driver: '',
+        dateTime: '',
+        workshopNotes: '',
+        email: '',
+      });
+      setChecklistData({});
+
+    } catch (error) {
+      console.error('Failed to submit checklist:', error);
+      alert('Error al enviar el checklist. Por favor, revise su conexión e intente de nuevo.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   const fetchChecklistConfig = async () => {
@@ -228,7 +265,8 @@ const App: React.FC = () => {
   return (
     <div className="bg-sky-100 min-h-screen p-4 sm:p-8">
       <div className="max-w-4xl mx-auto">
-        <header className="text-center mb-8 p-6 bg-[#1e3a8a] text-white rounded-xl shadow-lg">
+        <header className="flex flex-col items-center text-center mb-8 p-6 bg-[#1e3a8a] text-white rounded-xl shadow-lg">
+          <Logo className="w-16 h-16 mb-4 text-white" />
           <h1 className="text-3xl sm:text-4xl font-bold">Distribuidora Jota Be</h1>
           <p className="text-lg mt-1 text-blue-200">Check list pre viaje</p>
         </header>
