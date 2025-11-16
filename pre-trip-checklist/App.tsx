@@ -47,6 +47,8 @@ const App: React.FC = () => {
   });
   const [checklistData, setChecklistData] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionStatus, setSubmissionStatus] = useState<{type: 'success' | 'error', message: string} | null>(null);
+
 
   // --- DATA FETCHING ---
   useEffect(() => {
@@ -139,20 +141,23 @@ const App: React.FC = () => {
 
   // --- FORM HANDLING ---
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setSubmissionStatus(null);
     const { name, value } = e.target;
     setFormData(prev => ({...prev, [name]: value}));
   };
   const handleChecklistChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setSubmissionStatus(null);
     const { name, value } = e.target;
     setChecklistData(prev => ({...prev, [name]: value}));
   };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (userRole === 'guest') {
-      alert('El usuario invitado no puede enviar formularios.');
-      return;
+        setSubmissionStatus({ type: 'error', message: 'El usuario invitado no puede enviar formularios.' });
+        return;
     }
     setIsSubmitting(true);
+    setSubmissionStatus(null);
 
     const payload = {
       ...formData,
@@ -170,21 +175,15 @@ const App: React.FC = () => {
         body: JSON.stringify(payload),
       });
 
-      console.log('Webhook Response Status:', response.status);
-      console.log('Webhook Response OK:', response.ok);
-
       if (!response.ok) {
-        let errorText = await response.text();
-        // If errorText is empty, provide a default from the status.
+        let errorText = await response.text().catch(() => 'No se pudo leer el cuerpo de la respuesta.');
         if (!errorText) {
-          errorText = response.statusText || `Error code: ${response.status}`;
+          errorText = `El servidor respondió con código de estado ${response.status}.`;
         }
-        console.error('Webhook Response Error Text:', errorText);
-        // This error will be caught by the catch block below.
-        throw new Error(`El servidor respondió con un error ${response.status}. Mensaje: ${errorText}`);
+        throw new Error(errorText);
       }
 
-      alert('Checklist enviado con éxito.');
+      setSubmissionStatus({ type: 'success', message: 'Checklist enviado con éxito.' });
       
       // Reset form fields
       setFormData({
@@ -196,21 +195,21 @@ const App: React.FC = () => {
         email: '',
       });
       setChecklistData({});
+      
+      // Hide success message after a few seconds
+      setTimeout(() => setSubmissionStatus(null), 5000);
 
     } catch (error) {
       console.error('Failed to submit checklist:', error);
       let detailedErrorMessage = 'Ocurrió un error inesperado.';
       if (error instanceof Error) {
-          // Check for network errors which can indicate CORS issues
-          if (error.name === 'TypeError' && error.message.includes('fetch')) {
-              detailedErrorMessage = 'Hubo un error de red. Esto podría ser un problema de CORS (seguridad del navegador) o de conectividad. Revise la consola del navegador (F12) para más detalles.';
+          if (error.name === 'TypeError') {
+              detailedErrorMessage = 'Hubo un error de red. Esto es probablemente un problema de CORS (seguridad del navegador) o de conectividad. El administrador del servidor debe configurar el webhook para aceptar peticiones desde este sitio web.';
           } else {
-              detailedErrorMessage = error.message;
+              detailedErrorMessage = `Error del servidor: ${error.message}`;
           }
-      } else {
-          detailedErrorMessage = String(error);
       }
-      alert(`Error al enviar el checklist.\n\nDetalles: ${detailedErrorMessage}`);
+      setSubmissionStatus({ type: 'error', message: detailedErrorMessage });
     } finally {
       setIsSubmitting(false);
     }
@@ -367,7 +366,7 @@ const App: React.FC = () => {
             />
           </Card>
 
-          <div className="mt-8 flex justify-center">
+          <div className="mt-8 flex flex-col items-center">
             <button
               type="submit"
               disabled={isSubmitting || userRole === 'guest'}
@@ -376,6 +375,11 @@ const App: React.FC = () => {
             >
               {isSubmitting ? 'Enviando...' : 'Enviar Checklist'}
             </button>
+            {submissionStatus && (
+              <div className={`mt-4 text-center p-3 rounded-md text-sm font-medium ${submissionStatus.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                {submissionStatus.message}
+              </div>
+            )}
           </div>
         </form>
         
